@@ -1,0 +1,90 @@
+name: ml-pipeline-debugger
+version: "0.1.0"
+description: >
+  An OpenEnv-compliant reinforcement learning environment where an LLM agent
+  debugs broken ML training pipelines. The agent receives structured observations
+  (architecture summaries, tensor shapes, error traces, epoch metrics) and must
+  issue typed actions (fix reshapes, tune hyperparameters, add augmentation,
+  adjust loss weights) to resolve real ML engineering failures — without any GPU.
+author: ml-pipeline-debugger-team
+license: MIT
+
+entry_point: env.ml_debugger_env:MLDebuggerEnv
+
+tasks:
+  - id: easy
+    name: "CV Shape Error"
+    description: >
+      A standard PyTorch CNN pipeline with a deliberate mismatch between a
+      Conv2d output and a Linear layer input. The agent must issue a FixReshape
+      action with the correct tensor dimensions to achieve a clean forward pass.
+    difficulty: easy
+    max_steps: 15
+    success_threshold: 1.0
+
+  - id: medium
+    name: "NLP Overfitting"
+    description: >
+      Fine-tuning a small Transformer on a highly imbalanced dataset. The model
+      memorizes training data immediately (val_loss diverges). The agent must
+      apply sequence length truncation and dropout to close the validation gap
+      below 0.15.
+    difficulty: medium
+    max_steps: 15
+    success_threshold: 0.8
+
+  - id: hard
+    name: "Lung Segmentation IoU"
+    description: >
+      A complex cross-dataset lung segmentation architecture with adaptive
+      attention. The agent must tune the learning rate scheduler and balance
+      Dice vs Cross-Entropy loss weights to push IoU above 0.85 within 5 steps.
+    difficulty: hard
+    max_steps: 15
+    success_threshold: 0.85
+
+observation_space:
+  type: object
+  description: JSON-serializable pipeline state snapshot
+  fields:
+    task_id: string
+    architecture_summary: string
+    tensor_shapes: "dict[str, list[int]]"
+    error_trace: "string | null"
+    metrics_history: "list[EpochMetrics]"
+    step_number: integer
+    max_steps: integer
+
+action_space:
+  type: discriminated_union
+  discriminator: action_type
+  variants:
+    - type: tune_hyperparameters
+      fields: [lr, batch_size, epochs]
+    - type: fix_reshape
+      fields: [layer, new_shape]
+    - type: add_augmentation
+      fields: [strategy]
+    - type: adjust_loss_weights
+      fields: [dice_weight, ce_weight]
+
+reward:
+  type: dense
+  range: [-1.0, 2.0]
+  description: >
+    +0.1 per successful simulated epoch,
+    +1.0 per 0.05 drop in validation loss,
+    -0.5 for crash/OOM/NaN,
+    -0.3 for repeated failed actions
+
+tags:
+  - openenv
+  - ml-debugging
+  - llm-agent
+  - pydantic-v2
+  - cpu-only
+
+deployment:
+  platform: huggingface-spaces
+  runtime: docker
+  python_version: "3.12"
