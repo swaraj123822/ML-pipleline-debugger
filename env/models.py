@@ -263,10 +263,3 @@ class TaskState(BaseModel):
     def is_terminal(self) -> bool:
         return self.is_solved or self.current_step >= 15
     
-print('''models.py loaded successfully
-      This module defines the core data models for the ML Pipeline Debugger environment, including:
-      - Action: the set of valid actions the agent can take, as a discriminated union of 4 types.
-      - Observation: the structured state information the agent receives at each step.
-      - Reward: the dense reward signal with value, reason, and cumulative tracking.
-      ''')    
-    

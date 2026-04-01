@@ -558,4 +558,3 @@ def _get_architecture(
         },
     )
 
-print("simulation.py loaded successfully ")
