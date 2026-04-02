@@ -1,3 +1,6 @@
+__pycache__
+venv
+server/__pycache__
 mine/
 venv/
 __pycache__/
