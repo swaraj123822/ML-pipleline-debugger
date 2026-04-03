@@ -1,30 +1,10 @@
-"""
-baseline/baseline.py — Baseline Inference Script
-
-Uses the OpenAI API + client.py (WebSocket) to run an LLM agent
-against all 3 tasks. Reads OPENAI_API_KEY from environment variables.
-Produces a reproducible baseline score written to baseline_results.json.
-
-Usage:
-    # Server must be running first:
-    #   uvicorn server.app:app --host 0.0.0.0 --port 7860
-
-    OPENAI_API_KEY=sk-... python baseline/baseline.py
-    OPENAI_API_KEY=sk-... python baseline/baseline.py --task easy
-    OPENAI_API_KEY=sk-... python baseline/baseline.py --model gpt-4o
-    OPENAI_API_KEY=sk-... python baseline/baseline.py --url http://localhost:7860
-"""
-
-from __future__ import annotations
-
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from typing import Any, Literal
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openai import OpenAI
 
@@ -36,8 +16,10 @@ from models import (
     TuneHyperparameters,
 )
 
-DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_URL = os.environ.get("MLDBG_BASE_URL", "http://localhost:7860")
+API_BASE_URL = os.environ.get("API_BASE_URL")
+HF_TOKEN = os.environ.get("HF_TOKEN")
+MODEL_NAME = os.environ.get("MODEL_NAME")
+ENV_URL = os.environ.get("MLDBG_BASE_URL", "http://localhost:7860")
 
 SYSTEM_PROMPT = """You are an expert ML engineer debugging broken training pipelines.
 
@@ -60,14 +42,12 @@ Respond with ONLY the raw JSON object. No explanation. No markdown fences."""
 
 
 def parse_action(text: str) -> Any | None:
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(l for l in lines if not l.strip().startswith("```")).strip()
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        text = match.group(0)
     try:
         raw = json.loads(text)
-    except json.JSONDecodeError as e:
-        print(f"  [WARN] JSON parse error: {e}")
+    except json.JSONDecodeError:
         return None
     t = raw.get("action_type", "")
     try:
@@ -79,10 +59,8 @@ def parse_action(text: str) -> Any | None:
             return AddAugmentation(**raw)
         if t == "adjust_loss_weights":
             return AdjustLossWeights(**raw)
-        print(f"  [WARN] Unknown action_type: '{t}'")
         return None
-    except Exception as e:
-        print(f"  [WARN] Action validation error: {e}")
+    except Exception:
         return None
 
 
@@ -91,14 +69,11 @@ def run_task(
     task_id: Literal["easy", "medium", "hard"],
     model: str,
     base_url: str,
-    verbose: bool = True,
 ) -> dict[str, Any]:
     trajectory: list[dict] = []
     conversation: list[dict] = []
 
-    print(f"\n{'='*60}")
-    print(f"TASK: {task_id.upper()}")
-    print(f"{'='*60}")
+    print(f"[START] {task_id}")
 
     with MLDebuggerEnv(base_url=base_url).sync() as env:
         obs = env.reset(task_id=task_id)
@@ -106,15 +81,6 @@ def run_task(
         for step in range(15):
             user_content = json.dumps(obs.model_dump(mode="json"), indent=2)
             conversation.append({"role": "user", "content": user_content})
-
-            if verbose:
-                print(f"\n--- Step {step + 1}/15 ---")
-                if obs.error_trace:
-                    print(f"  Error: {obs.error_trace[:100]}...")
-                if obs.last_metrics:
-                    m = obs.last_metrics
-                    iou_str = f" iou={m.iou:.4f}" if m.iou else ""
-                    print(f"  Metrics: train={m.train_loss:.4f} val={m.val_loss:.4f}{iou_str}")
 
             try:
                 response = client.chat.completions.create(
@@ -124,26 +90,22 @@ def run_task(
                     max_tokens=256,
                 )
             except Exception as e:
-                print(f"  [ERROR] OpenAI call failed: {e}")
+                print(f"[STEP] {step + 1} Error: {e}")
                 break
 
             raw_text = response.choices[0].message.content or ""
             conversation.append({"role": "assistant", "content": raw_text})
 
-            if verbose:
-                print(f"  LLM: {raw_text[:150]}")
-
             action = parse_action(raw_text)
             if action is None:
+                print(f"[STEP] {step + 1} Invalid JSON")
                 conversation.append({
                     "role": "user",
-                    "content": "Invalid response. Output ONLY a valid JSON action object.",
+                    "content": "Invalid response. Output ONLY a valid JSON action object. No text before or after.",
                 })
                 continue
 
-            if verbose:
-                print(f"  Action: {action.action_type} → {action.model_dump()}")
-
+            print(f"[STEP] {step + 1} {action.action_type}")
             result = env.step(action)
 
             trajectory.append({
@@ -156,21 +118,17 @@ def run_task(
                 "crash": result.info.get("crash"),
             })
 
-            if verbose:
-                print(f"  Reward: {result.reward:+.2f} ({result.reward_reason})")
-
             obs = result.observation
 
             if result.done:
                 fg = result.info.get("final_grade", {})
-                print(f"\n  Done at step {step + 1}.")
-                print(f"  Score:  {fg.get('score', 0):.4f}")
-                print(f"  Passed: {fg.get('passed', False)}")
-                print(f"  Detail: {fg.get('reason', '')}")
+                score = fg.get("score", 0.0)
+                print(f"[END] {task_id} Score: {score}")
                 return {
-                    "task_id": task_id, "model": model,
+                    "task_id": task_id,
+                    "model": model,
                     "steps_taken": step + 1,
-                    "score": fg.get("score", 0.0),
+                    "score": score,
                     "passed": fg.get("passed", False),
                     "cumulative_reward": result.cumulative_reward,
                     "trajectory": trajectory,
@@ -179,11 +137,11 @@ def run_task(
 
             time.sleep(0.3)
 
-        # Hit step limit
         final_state = env.state()
-        print(f"\n  Max steps reached.")
+        print(f"[END] {task_id} Score: 0.0")
         return {
-            "task_id": task_id, "model": model,
+            "task_id": task_id,
+            "model": model,
             "steps_taken": 15,
             "score": 0.0,
             "passed": False,
@@ -196,49 +154,25 @@ def run_task(
 def main() -> None:
     parser = argparse.ArgumentParser(description="ML Pipeline Debugger — Baseline Agent")
     parser.add_argument("--task", choices=["easy", "medium", "hard", "all"], default="all")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--url", default=DEFAULT_URL, help="Server base URL")
     parser.add_argument("--output", default="baseline_results.json")
-    parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        print("ERROR: OPENAI_API_KEY not set.")
+    if not HF_TOKEN or not API_BASE_URL or not MODEL_NAME:
         sys.exit(1)
 
-    oai = OpenAI(api_key=api_key)
+    oai = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
     tasks = ["easy", "medium", "hard"] if args.task == "all" else [args.task]
     results: list[dict] = []
 
     for task_id in tasks:
-        r = run_task(oai, task_id, args.model, args.url, verbose=not args.quiet)
+        r = run_task(oai, task_id, MODEL_NAME, ENV_URL)
         results.append(r)
 
-    print(f"\n{'='*60}")
-    print("BASELINE RESULTS SUMMARY")
-    print(f"{'='*60}")
-    print(f"{'Task':<10} {'Score':>8} {'Passed':>8} {'Steps':>7} {'Cum.Reward':>12}")
-    print("-" * 50)
+    avg = sum(r["score"] for r in results) / len(results) if results else 0.0
 
-    total = 0.0
-    for r in results:
-        print(
-            f"{r['task_id']:<10} {r['score']:>8.4f} "
-            f"{'YES' if r['passed'] else 'NO':>8} "
-            f"{r['steps_taken']:>7} {r['cumulative_reward']:>12.4f}"
-        )
-        total += r["score"]
-
-    avg = total / len(results) if results else 0.0
-    print("-" * 50)
-    print(f"{'AVERAGE':<10} {avg:>8.4f}")
-    print(f"\nModel: {args.model}")
-
-    output = {"model": args.model, "average_score": avg, "tasks": results}
+    output = {"model": MODEL_NAME, "average_score": avg, "tasks": results}
     with open(args.output, "w") as f:
         json.dump(output, f, indent=2)
-    print(f"Results written to: {args.output}")
 
 
 if __name__ == "__main__":
