@@ -195,3 +195,12 @@ async def _send_result(websocket: WebSocket, data: Any) -> None:
 
 async def _send_error(websocket: WebSocket, message: str) -> None:
     await websocket.send_text(json.dumps({"error": message}))
+
+
+
+def main() -> None:
+    import uvicorn
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    main()    

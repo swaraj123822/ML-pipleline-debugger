@@ -116,11 +116,33 @@ class AdjustLossWeights(_BaseAction):
                 f"dice_weight + ce_weight must equal 1.0, got {total:.6f}"
             )
         return self
+    
+    
+class ChangeOptimizer(_BaseAction):
+    """Change the training optimizer (Distractor/Expanded action space)."""
+    action_type: Literal["change_optimizer"] = "change_optimizer"
+    optimizer: Literal["Adam", "SGD", "RMSprop"] = Field(..., description="The optimizer algorithm.")
+    weight_decay: float = Field(..., ge=0.0, description="Weight decay penalty.")
+
+
+class ToggleLayerFreeze(_BaseAction):
+    """Freeze or unfreeze a specific layer's gradients (Distractor/Expanded action space)."""
+    action_type: Literal["toggle_layer_freeze"] = "toggle_layer_freeze"
+    layer_name: str = Field(..., description="Name of the layer.")
+    freeze: bool = Field(..., description="True to freeze gradients, False to unfreeze.")
+
+    @field_validator("layer_name")
+    @classmethod
+    def layer_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("layer name must not be empty")
+        return v.strip()
+
 
 
 # Single Action type — discriminated on action_type field
 Action = Annotated[
-    Union[TuneHyperparameters, FixReshape, AddAugmentation, AdjustLossWeights],
+    Union[TuneHyperparameters, FixReshape, AddAugmentation, AdjustLossWeights, ChangeOptimizer, ToggleLayerFreeze],
     Field(discriminator="action_type"),
 ]
 
@@ -137,6 +159,9 @@ class EpochMetrics(_BaseObservation):
     val_loss: float = Field(..., ge=0.0)
     accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
     iou: float | None = Field(default=None, ge=0.0, le=1.0)
+    gpu_memory_allocated_mb: int = Field(default=0, ge=0, description="GPU memory allocated in MB")
+    step_time_ms: float = Field(default=0.0, ge=0.0, description="Average time per step in milliseconds")
+    gradient_norm: float = Field(default=0.0, ge=0.0, description="Norm of the gradients")
 
 
 class MLDebuggerObservation(_BaseObservation):
@@ -176,7 +201,7 @@ class MLDebuggerState(_BaseState):
     is_solved: bool = Field(default=False)
     cumulative_reward: float = Field(default=0.0)
     action_history: list[
-        Union[TuneHyperparameters, FixReshape, AddAugmentation, AdjustLossWeights]
+        Union[TuneHyperparameters, FixReshape, AddAugmentation, AdjustLossWeights, ChangeOptimizer, ToggleLayerFreeze]
     ] = Field(default_factory=list)
     last_observation: MLDebuggerObservation | None = Field(default=None)
 
@@ -208,10 +233,12 @@ __all__ = [
     "Action",
     "AddAugmentation",
     "AdjustLossWeights",
+    "ChangeOptimizer",
     "EpochMetrics",
     "FixReshape",
     "MLDebuggerObservation",
     "MLDebuggerState",
     "StepResult",
+    "ToggleLayerFreeze",
     "TuneHyperparameters",
 ]

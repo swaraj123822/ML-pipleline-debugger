@@ -147,9 +147,14 @@ class TestInfiniteLoopDetection:
         assert detect_crash("easy", action, state) is None
 
     def test_no_loop_with_only_2_identical(self):
-        action = FixReshape(layer="fc1", new_shape=[512])
-        state = _make_state("easy", history=[action, action])
-        assert detect_crash("easy", action, state) is None
+            action = FixReshape(layer="fc1", new_shape=[512])
+            state = _make_state("easy", history=[action, action])
+            result = detect_crash("easy", action, state)
+            
+            # It should bypass the loop detector, but still fail normally 
+            # because "fc1" is the wrong layer for the easy task.
+            assert result is not None
+            assert result.crash_type == "shape_mismatch"
 
 
 # ---------------------------------------------------------------------------

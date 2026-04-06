@@ -16,10 +16,13 @@ from models import (
     TuneHyperparameters,
 )
 
-API_BASE_URL = os.environ.get("API_BASE_URL")
-HF_TOKEN = os.environ.get("HF_TOKEN")
-MODEL_NAME = os.environ.get("MODEL_NAME")
+API_BASE_URL = os.environ.get("API_BASE_URL","https://openrouter.ai/api/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME","openai/gpt-oss-120b:free")
 ENV_URL = os.environ.get("MLDBG_BASE_URL", "http://localhost:7860")
+HF_TOKEN = os.environ.get("HF_TOKEN")
+
+if not HF_TOKEN:
+    raise ValueError("HF_TOKEN environment variable is required")
 
 SYSTEM_PROMPT = """You are an expert ML engineer debugging broken training pipelines.
 
@@ -73,7 +76,7 @@ def run_task(
     trajectory: list[dict] = []
     conversation: list[dict] = []
 
-    print(f"[START] {task_id}")
+    print(f"[START] task={task_id} env=ml-pipeline-debugger model={model}", flush=True)
 
     with MLDebuggerEnv(base_url=base_url).sync() as env:
         obs = env.reset(task_id=task_id)
@@ -90,7 +93,7 @@ def run_task(
                     max_tokens=256,
                 )
             except Exception as e:
-                print(f"[STEP] {step + 1} Error: {e}")
+                print(f"[STEP] step={step + 1} action=null reward=0.00 done=false error=api_error", flush=True)
                 break
 
             raw_text = response.choices[0].message.content or ""
@@ -98,14 +101,13 @@ def run_task(
 
             action = parse_action(raw_text)
             if action is None:
-                print(f"[STEP] {step + 1} Invalid JSON")
+                print(f"[STEP] step={step + 1} action=null reward=0.00 done=false error=invalid_json", flush=True)
                 conversation.append({
                     "role": "user",
                     "content": "Invalid response. Output ONLY a valid JSON action object. No text before or after.",
                 })
                 continue
 
-            print(f"[STEP] {step + 1} {action.action_type}")
             result = env.step(action)
 
             trajectory.append({
@@ -118,12 +120,19 @@ def run_task(
                 "crash": result.info.get("crash"),
             })
 
+            error_val = result.info.get("crash", {}).get("type") if result.info.get("crash") else "null"
+            done_val = "true" if result.done else "false"
+            action_str = json.dumps(action.model_dump())
+            print(f"[STEP] step={step + 1} action={action_str} reward={result.reward:.2f} done={done_val} error={error_val}", flush=True)
+
             obs = result.observation
 
             if result.done:
                 fg = result.info.get("final_grade", {})
                 score = fg.get("score", 0.0)
-                print(f"[END] {task_id} Score: {score}")
+                success_val = "true" if fg.get("passed", False) else "false"
+                rewards_str = ",".join(f"{r['reward']:.2f}" for r in trajectory)
+                print(f"[END] success={success_val} steps={step + 1} score={score:.3f} rewards={rewards_str}", flush=True)
                 return {
                     "task_id": task_id,
                     "model": model,
@@ -138,7 +147,8 @@ def run_task(
             time.sleep(0.3)
 
         final_state = env.state()
-        print(f"[END] {task_id} Score: 0.0")
+        rewards_str = ",".join(f"{r['reward']:.2f}" for r in trajectory)
+        print(f"[END] success=false steps=15 score=0.000 rewards={rewards_str}", flush=True)
         return {
             "task_id": task_id,
             "model": model,
