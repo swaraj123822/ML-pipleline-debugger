@@ -22,6 +22,8 @@ from models import (
     MLDebuggerState,
     StepResult,
     TuneHyperparameters,
+    ChangeOptimizer,
+    ToggleLayerFreeze
 )
 from server.reward import compute_reward
 from server.simulator import simulate_step
@@ -179,4 +181,9 @@ def _parse_action(raw: dict) -> Any:
         return AddAugmentation(**raw)
     if action_type == "adjust_loss_weights":
         return AdjustLossWeights(**raw)
+    if action_type == "change_optimizer":               
+        return ChangeOptimizer(**raw)         
+    if action_type == "toggle_layer_freeze":            
+        return ToggleLayerFreeze(**raw)       
+
     raise ValueError(f"Unknown action_type: '{action_type}'")
