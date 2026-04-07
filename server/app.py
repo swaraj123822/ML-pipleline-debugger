@@ -34,6 +34,8 @@ from models import (
     AddAugmentation,
     FixReshape,
     TuneHyperparameters,
+    ChangeOptimizer,
+    ToggleLayerFreeze
 )
 from server.environment import MLDebuggerEnvironment
 from server.tasks import TASK_REGISTRY
@@ -94,6 +96,14 @@ async def info() -> dict[str, Any]:
                 {
                     "action_type": "adjust_loss_weights",
                     "fields": {"dice_weight": "float [0,1]", "ce_weight": "float [0,1] (must sum to 1.0)"},
+                },
+                {
+                    "action_type": "change_optimizer",
+                    "fields": {"optimizer": "Adam|SGD|RMSprop", "weight_decay": "float >= 0.0"},
+                },
+                {
+                    "action_type": "toggle_layer_freeze",
+                    "fields": {"layer_name": "str", "freeze": "bool"},
                 },
             ],
         },
@@ -197,10 +207,9 @@ async def _send_error(websocket: WebSocket, message: str) -> None:
     await websocket.send_text(json.dumps({"error": message}))
 
 
-
 def main() -> None:
     import uvicorn
     uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
 
 if __name__ == "__main__":
-    main()    
+    main()

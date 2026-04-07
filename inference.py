@@ -14,6 +14,8 @@ from models import (
     AdjustLossWeights,
     FixReshape,
     TuneHyperparameters,
+    ChangeOptimizer,
+    ToggleLayerFreeze,
 )
 
 API_BASE_URL = os.environ.get("API_BASE_URL","https://openrouter.ai/api/v1")
@@ -35,6 +37,8 @@ You receive a JSON observation and must output EXACTLY ONE action as valid JSON.
 3. {"action_type": "add_augmentation", "strategy": "<dropout|weight_decay|truncate_sequence|horizontal_flip|mixup>"}
 4. {"action_type": "adjust_loss_weights", "dice_weight": <float [0,1]>, "ce_weight": <float [0,1]>}
    NOTE: dice_weight + ce_weight MUST equal exactly 1.0
+5. {"action_type": "change_optimizer", "optimizer": "<Adam|SGD|RMSprop>", "weight_decay": <float>}
+6. {"action_type": "toggle_layer_freeze", "layer_name": "<name>", "freeze": <true|false>}
 
 === TASK HINTS ===
 easy:   CNN shape error. Find the correct flatten size from tensor_shapes (conv_out channels x H x W).
@@ -62,6 +66,10 @@ def parse_action(text: str) -> Any | None:
             return AddAugmentation(**raw)
         if t == "adjust_loss_weights":
             return AdjustLossWeights(**raw)
+        if t == "change_optimizer":
+            return ChangeOptimizer(**raw)
+        if t == "toggle_layer_freeze":
+            return ToggleLayerFreeze(**raw)
         return None
     except Exception:
         return None
