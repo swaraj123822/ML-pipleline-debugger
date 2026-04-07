@@ -140,7 +140,7 @@ def run_task(
                 score = fg.get("score", 0.0)
                 success_val = "true" if fg.get("passed", False) else "false"
                 rewards_str = ",".join(f"{r['reward']:.2f}" for r in trajectory)
-                print(f"[END] success={success_val} steps={step + 1} score={score:.3f} rewards={rewards_str}", flush=True)
+                print(f"[END] success={success_val} steps={step + 1} score={score:.2f} rewards={rewards_str}", flush=True)
                 return {
                     "task_id": task_id,
                     "model": model,

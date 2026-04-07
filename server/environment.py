@@ -153,12 +153,15 @@ class MLDebuggerEnvironment(Environment):
 
     @property
     def state(self) -> MLDebuggerState:
-        """Return current internal state (required by OpenEnv spec)."""
         if self._state is None:
+            initial_obs = get_initial_observation(self._task_id)
             return MLDebuggerState(
                 task_id=self._task_id,
-                episode_id=str(uuid4()),
-                step_count=0,
+                current_step=0,
+                is_solved=False,
+                cumulative_reward=0.0,
+                action_history=[],
+                last_observation=initial_obs,
             )
         return self._state
 

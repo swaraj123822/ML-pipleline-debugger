@@ -129,6 +129,27 @@ async def info() -> dict[str, Any]:
         },
     }
 
+@app.post("/reset")
+async def http_reset(task_id: str = "easy") -> dict[str, Any]:
+    env = MLDebuggerEnvironment()
+    obs = env.reset(task_id=task_id)
+    return {"status": "ok", "observation": obs.model_dump(mode="json")}
+
+
+@app.post("/step")
+async def http_step(body: dict[str, Any]) -> dict[str, Any]:
+    env = MLDebuggerEnvironment()
+    env.reset(task_id=body.get("task_id", "easy"))
+    result = env.step(body.get("action", {}))
+    return result.model_dump(mode="json")
+
+
+@app.get("/state")
+async def http_state() -> dict[str, Any]:
+    env = MLDebuggerEnvironment()
+    state = env.state
+    return state.model_dump(mode="json")
+
 
 # ---------------------------------------------------------------------------
 # WebSocket endpoint
