@@ -25,6 +25,7 @@ from models import (
     MLDebuggerObservation,
     MLDebuggerState,
     TuneHyperparameters,
+    ToggleLayerFreeze,
 )
 
 # ---------------------------------------------------------------------------
@@ -245,18 +246,30 @@ def _curve_hard(action: object, state: MLDebuggerState, epoch0: int) -> list[Epo
     seed = f"hard-{epoch0}-{action.model_dump_json()}"
 
     best_lr, best_dice = 1e-3, 0.5
+    is_unfrozen = False  # Track if they unfroze the encoder
+    
     for past in state.action_history:
         if isinstance(past, TuneHyperparameters):
             best_lr = past.lr
         if isinstance(past, AdjustLossWeights):
             best_dice = past.dice_weight
+        if isinstance(past, ToggleLayerFreeze) and past.layer_name == "ResNet50-Encoder" and past.freeze is False:
+            is_unfrozen = True
+
     if isinstance(action, TuneHyperparameters):
         best_lr = action.lr
     if isinstance(action, AdjustLossWeights):
         best_dice = action.dice_weight
+    if isinstance(action, ToggleLayerFreeze) and action.layer_name == "ResNet50-Encoder" and action.freeze is False:
+        is_unfrozen = True
 
     config_score = _lr_optimality(best_lr) * 0.45 + _dice_optimality(best_dice) * 0.55
-    iou_ceiling = 0.52 + config_score * 0.45
+    
+    # THE TRAP:
+    if not is_unfrozen:
+        iou_ceiling = 0.52 + config_score * 0.20 # Maxes out at 0.72
+    else:
+        iou_ceiling = 0.52 + config_score * 0.45
 
     base_iou = 0.52
     if (

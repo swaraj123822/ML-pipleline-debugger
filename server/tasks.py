@@ -97,10 +97,11 @@ def get_initial_observation(task_id: Literal["easy", "medium", "hard"]) -> MLDeb
     return MLDebuggerObservation(
         task_id="hard",
         architecture_summary=(
-            "SegNet: ResNet50-Encoder->AdaptiveAttentionGate(512)->"
+            "SegNet: ResNet50-Encoder(FROZEN)->AdaptiveAttentionGate(512)->"
             "LightweightDecoder(256,128,64)->Sigmoid [5-class lung segmentation]\n"
             "Cross-dataset: trained ChestX-ray14, validated RSNA Pneumonia.\n"
-            "Current loss: 0.6*CrossEntropy + 0.4*Dice. IoU plateaus at 0.52. Target: >0.85 in 5 steps."
+            "Current loss: 0.6*CrossEntropy + 0.4*Dice. IoU plateaus at 0.52. Target: >0.85 in 5 steps.\n"
+            "Hint: The pre-trained encoder weights are locked."
         ),
         tensor_shapes={
             "input": [2, 3, 512, 512],

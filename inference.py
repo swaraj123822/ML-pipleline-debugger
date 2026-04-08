@@ -18,8 +18,8 @@ from models import (
     ToggleLayerFreeze,
 )
 
-API_BASE_URL = os.environ.get("API_BASE_URL","https://openrouter.ai/api/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME","openai/gpt-oss-120b:free")
+API_BASE_URL = os.environ.get("API_BASE_URL","https://router.huggingface.co/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME","openai/gpt-oss-120b:groq")
 ENV_URL = os.environ.get("MLDBG_BASE_URL", "http://localhost:7860")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 
@@ -43,7 +43,7 @@ You receive a JSON observation and must output EXACTLY ONE action as valid JSON.
 === TASK HINTS ===
 easy:   CNN shape error. Find the correct flatten size from tensor_shapes (conv_out channels x H x W).
 medium: Transformer overfitting. Apply 'dropout' then 'truncate_sequence' to close val/train gap < 0.15.
-hard:   Lung segmentation. Tune lr to (0.0001–0.003) AND dice_weight to (0.55–0.75) within 5 steps.
+hard: Lung segmentation IoU is plateauing. Adjust the loss weights heavily toward Dice, ensure the learning rate is suited for fine-tuning, and check if any layers need to be unfrozen.
 
 Respond with ONLY the raw JSON object. No explanation. No markdown fences."""
 
