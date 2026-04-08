@@ -20,25 +20,11 @@ The environment uses a **fast simulation engine** so every `step()` runs in <50 
 - 3 tasks (Easy → Medium → Hard) implemented
 - Dense reward + programmatic graders
 
-
-# ML Pipeline Debugger
-
-**OpenEnv Environment** for the Reinforcement Learning Hackathon 2026
-
-An AI agent acts as an ML Engineer debugging and optimizing broken deep learning pipelines (Computer Vision + NLP).  
-The environment uses a **fast simulation engine** so every `step()` runs in <50 ms — no real training required.
-
-## Status
-- First commit (setup phase)
-- Full OpenEnv spec compliance in progress
-- 3 tasks (Easy → Medium → Hard) planned
-- Dense reward + programmatic graders coming soon
-
-## Quick Start (after full implementation)
+## Quick Start 
 
 ```bash
 # 1. Clone & setup
-git clone https://github.com/YOUR_USERNAME/ml-pipeline-debugger.git
+git clone [https://github.com/YOUR_USERNAME/ml-pipeline-debugger.git](https://github.com/YOUR_USERNAME/ml-pipeline-debugger.git)
 cd ml-pipeline-debugger
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
@@ -46,5 +32,5 @@ source .venv/bin/activate    # Windows: .venv\Scripts\activate
 # 2. Install
 pip install -e .
 
-# 3. Run baseline (when ready)
+# 3. Run baseline
 OPENAI_API_KEY=sk-... python baseline/baseline.py
