@@ -8,4 +8,5 @@ mine/
 .env
 baseline_results.json
 .pytest_cache
-tt312
+su_venv/
+.vscode/
