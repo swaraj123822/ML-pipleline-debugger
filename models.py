@@ -184,6 +184,12 @@ class MLDebuggerObservation(_BaseObservation):
     @property
     def steps_remaining(self) -> int:
         return self.max_steps - self.step_number
+    
+    @property
+    def val_train_gap(self) -> float | None:
+        if self.last_metrics:
+            return round(self.last_metrics.val_loss - self.last_metrics.train_loss, 4)
+        return None
 
 
 # ---------------------------------------------------------------------------

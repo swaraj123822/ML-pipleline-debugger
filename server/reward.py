@@ -44,6 +44,10 @@ def compute_reward(result: SimulationResult, cumulative_so_far: float) -> tuple[
         value += c["solve_bonus"]
         reasons.append(f"Task SOLVED: +{c['solve_bonus']:.1f}")
 
+    if value == 0.0 and c["crash_penalty"] == 0:
+        value = -0.01
+        reasons.append("Valid action but no progress: -0.01")    
+
     value = max(-1.0, min(2.0, value))
     reason = "; ".join(reasons) if reasons else "No progress this step."
     return round(value, 6), reason

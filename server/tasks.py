@@ -30,9 +30,12 @@ class GraderResult:
     partial_credit: dict[str, float]
     
 
-def _clamp(score: float) -> float:
-    """Clamp score to strictly open interval (0, 1) as required by the validator."""
-    return round(max(0.001, min(0.999, score)), 3)
+def _clamp(score: float, step_count: int = 0) -> float:
+    """Clamp score to open interval (0, 1) and apply a micro-penalty for inefficiency."""
+    efficiency_penalty = step_count * 0.001
+    
+    final_score = max(0.001, min(0.999, score - efficiency_penalty))
+    return round(final_score, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -151,14 +154,14 @@ def _grade_easy(state: MLDebuggerState) -> GraderResult:
         wasted = max(0, correct_step - 1)
         partial["efficiency"] = max(0.0, 0.2 - wasted * 0.05)
         return GraderResult(
-            score=_clamp(sum(partial.values())),
+            score=_clamp(sum(partial.values()), len(state.action_history)),
             passed=True,
             reason=f"Correct fix at step {correct_step}. Wasted steps: {wasted}.",
             partial_credit=partial,
         )
 
     return GraderResult(
-        score=_clamp(sum(partial.values())),
+        score=_clamp(sum(partial.values()), len(state.action_history)), 
         passed=False,
         reason=f"FixReshape attempted but shape incorrect. Correct layer identified: {correct_layer_seen}.",
         partial_credit=partial,
@@ -204,7 +207,7 @@ def _grade_medium(state: MLDebuggerState) -> GraderResult:
         reasons.append("NaN crash penalty")
 
     return GraderResult(
-        score=_clamp(score),
+        score=_clamp(score, len(state.action_history)),
         passed=score >= 0.8,
         reason=". ".join(reasons) + ".",
         partial_credit=partial,
@@ -246,7 +249,7 @@ def _grade_hard(state: MLDebuggerState) -> GraderResult:
     partial["config_quality"] = min(0.2, cfg)
 
     raw = partial["iou_achievement"] + (partial["config_quality"] if partial["iou_achievement"] < 1.0 else 0.0)
-    score = _clamp(raw)
+    score = _clamp(raw, len(state.action_history))
 
     return GraderResult(
         score=score,
