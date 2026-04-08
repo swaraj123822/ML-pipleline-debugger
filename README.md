@@ -10,7 +10,7 @@ app_port: 7860
 
 # ML Pipeline Debugger
 
-**OpenEnv Environment** for the Reinforcement Learning Hackathon 2026
+**OpenEnv Environment** 
 
 An AI agent acts as an ML Engineer debugging and optimizing broken deep learning pipelines (Computer Vision + NLP).  
 The environment uses a **fast simulation engine** so every `step()` runs in <50 ms — no real training required.
