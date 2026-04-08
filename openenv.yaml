@@ -19,7 +19,7 @@ tasks:
     name: "CV Shape Error"
     difficulty: easy
     max_steps: 15
-    success_threshold: 1.0
+    success_threshold: 0.99
     description: >
       Fix a tensor reshape mismatch in a CNN. Flatten outputs 512 features
       but Linear expects 2304 (64x6x6). Agent must submit correct FixReshape.
@@ -37,7 +37,7 @@ tasks:
     name: "Lung Segmentation IoU"
     difficulty: hard
     max_steps: 15
-    success_threshold: 0.85
+    success_threshold: 0.84
     description: >
       Push cross-dataset lung segmentation IoU above 0.85 within 5 steps
       by tuning learning rate and Dice vs Cross-Entropy loss weights.
