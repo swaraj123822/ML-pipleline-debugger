@@ -1,3 +1,26 @@
+---
+title: ML Pipeline Debugger
+emoji: 🐛
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
+# ML Pipeline Debugger
+
+**OpenEnv Environment** for the Reinforcement Learning Hackathon 2026
+
+An AI agent acts as an ML Engineer debugging and optimizing broken deep learning pipelines (Computer Vision + NLP).  
+The environment uses a **fast simulation engine** so every `step()` runs in <50 ms — no real training required.
+
+## Status
+- OpenEnv spec compliant
+- 3 tasks (Easy → Medium → Hard) implemented
+- Dense reward + programmatic graders
+
+
 # ML Pipeline Debugger
 
 **OpenEnv Environment** for the Reinforcement Learning Hackathon 2026
