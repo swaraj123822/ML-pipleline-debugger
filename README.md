@@ -21,8 +21,6 @@ pinned: false
 
 *An OpenEnv-compliant environment where an AI agent acts as an ML engineer — diagnosing and fixing broken training pipelines across three difficulty levels.*
 
-[🚀 Live Demo](https://huggingface.co/spaces/subhrajit36/my-env) · [📄 Docs](#-api-reference) · [🐛 Issues](https://github.com/swaraj123822/ML-pipleline-debugger/issues)
-
 </div>
 
 ---
@@ -38,30 +36,33 @@ pinned: false
                             │  e.g. {"action": "fix_reshape"}
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              FastAPI WebSocket Server  (port 7860)          │
+│              FastAPI Server  (port 7860)                    │
 │                                                             │
-│   ┌─────────────────┐        ┌──────────────────────────┐  │
-│   │  Action Router  │──────▶ │   Simulation Engine      │  │
-│   │  (Pydantic v2)  │        │   (<50ms per step)       │  │
-│   └─────────────────┘        └──────────┬───────────────┘  │
-│                                         │                   │
-│                              ┌──────────▼───────────────┐  │
-│                              │   JSON Scenario Files     │  │
-│                              │  ┌─────────────────────┐ │  │
-│                              │  │ easy_cv_shapes.json  │ │  │
-│                              │  │ medium_nlp_overfit.. │ │  │
-│                              │  │ hard_lung_seg.json   │ │  │
-│                              │  └─────────────────────┘ │  │
-│                              └──────────────────────────┘  │
+│   ┌───────────────────────────────────────────────────────┐ │
+│   │          Transport Layer (dual protocol)              │ │
+│   │   WebSocket /ws   │  HTTP POST /reset, /step, /state  │ │
+│   └─────────┬─────────┴──────────┬────────────────────────┘ │
+│             │                    │                          |  
+│   ┌─────────▼────────────────────▼────────────────────────┐ │
+│   │         MLDebuggerEnvironment (OpenEnv)               │ │
+│   │            reset() · step() · state()                 │ │
+│   └─────────────────────┬─────────────────────────────────┘ │
+│                         │                                   │
+│   ┌─────────────────────▼─────────────────────────────────┐ │
+│   │  ┌─────────────┐   ┌──────────────┐   ┌────────────┐  │ │
+│   │  │  Simulator  │   │   Graders    │   │  Reward    │  │ │
+│   │  │ (<50ms/step)│   │ (3 tasks)    │   │  Engine    │  │ │
+│   │  └─────────────┘   └──────────────┘   └────────────┘  │ │
+│   └───────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                             │
                             │  Observation (error_msg, metrics,
                             │  tensor_shapes, reward, done)
                             ▼
-                       AI AGENT
+                         AI AGENT
 ```
 
-No real model training occurs at any point. Every response — error messages, training logs, metrics — is authored in advance and stored in JSON files. This design allows the environment to be fully deterministic and GPU-free.
+No real model training occurs at any point. Every response — error messages, training logs, metrics — is authored in advance and stored as deterministic state machines. This design allows the environment to be **fully deterministic and GPU-free**.
 
 ---
 
@@ -70,55 +71,86 @@ No real model training occurs at any point. Every response — error messages, t
 ```
 ml-pipeline-debugger/
 ├── server/
-│   ├── app.py            # FastAPI server (Endpoints + WebSocket /ws)
-│   ├── environment.py    # Core OpenEnv MLDebuggerEnvironment logic
-│   ├── simulator.py      # CPU-only simulation engine assessing crashes & metrics
-│   ├── tasks.py          # 3 difficulty tasks and determinstic auto-graders
-│   └── reward.py         # Dense step-by-step reward configuration
+│   ├── app.py              # FastAPI server (HTTP + WebSocket /ws endpoints)
+│   ├── environment.py      # Core OpenEnv MLDebuggerEnvironment logic
+│   ├── simulator.py        # CPU-only simulation engine (<50ms per step)
+│   ├── tasks.py            # 3 difficulty tasks with deterministic auto-graders
+│   ├── reward.py           # Dense step-by-step reward function
+│   └── requirements.txt    # Server-side dependencies
+├── tests/
+│   ├── test_env_loop.py    # End-to-end episode loop tests (reset/step/state)
+│   ├── test_graders.py     # Deterministic grader correctness tests
+│   └── test_simulator.py   # Simulation engine & crash detection tests
+├── baseline/
+│   ├── __init__.py         # Baseline agent package marker
+│   └── requirements.txt    # Client-side dependencies (openai, websockets)
 ├── validation-scripts/
-│   └── validate-submission.sh # Utility to validate OpenEnv submission criteria
-├── models.py             # Pydantic Action/Observation/State structures
-├── inference.py          # Baseline LLM agent using OpenAI compatibility
-├── client.py             # Reusable Python Websocket Client (MLDebuggerEnv)
-├── openenv.yaml          # OpenEnv metadata & spec
-├── Dockerfile            # Docker container config
-└── README.md             # This file
+│   └── validate-submission.sh  # OpenEnv submission validation (ping + docker + openenv)
+├── models.py               # Pydantic v2 Action/Observation/State contracts (shared)
+├── inference.py            # Baseline LLM agent (OpenAI-compatible, multi-task)
+├── client.py               # Reusable async/sync WebSocket client (MLDebuggerEnv)
+├── openenv.yaml            # OpenEnv metadata & spec declaration
+├── pyproject.toml          # Project config, dependencies, dev tools (ruff, pytest)
+├── Dockerfile              # HF Spaces-ready Docker container config
+└── README.md               
 ```
 
 ---
 
 ## 🎯 Tasks
 
-### Task 1 — Easy: CV Shape Error
-- **Problem:** A CNN's Conv layers output the wrong shape (512 vs 2304) for the subsequent Linear layer, crashing at forward pass with a dimension mismatch.
-- **Correct action:** `fix_reshape` with the right flatten dimension (`layer="flatten"`, `new_shape=[2304]`).
-- **Grader:** Evaluates both correct diagnosis of the layer and supplying the precise shape dimensions.
-- **Max steps:** 15
+### Task 1 — Easy: Tensor Shape Error
 
-### Task 2 — Medium: NLP Overfitting
-- **Problem:** A Transformer text classifier is memorizing training data. Train loss plummets drastically, but validation loss rapidly diverges and spikes.
-- **Correct actions:** `add_augmentation` applying both `dropout` and `truncate_sequence` sequentially to stabilize the validation gap below 0.15.
-- **Grader:** Credits correctly started regularization strategies and heavily rewards closing the val/train loss gap metric safely.
-- **Max steps:** 15
+| Attribute | Detail |
+|-----------|--------|
+| **Problem** | A CNN's Conv2d layers output the wrong shape (512 vs 2304) for the subsequent Linear layer, crashing at forward pass with a dimension mismatch. |
+| **Architecture** | `Conv2d(3,64,3,pad=0) → ReLU → MaxPool2d(5) → Flatten([512]) ← WRONG → Linear(512,10)` |
+| **Correct action** | `fix_reshape` with `layer="flatten"`, `new_shape=[2304]` (64×6×6) |
+| **Grader** | Evaluates correct layer identification, precise shape, and step efficiency |
+| **Max steps** | 15 |
+| **Success threshold** | ≥ 0.99 |
 
-### Task 3 — Hard: Lung Segmentation IoU
-- **Problem:** A U-Net segmentation architecture is plateaued at IoU=0.52 due to unbalanced Cross-Entropy/Dice losses and suboptimal learning rates. Target is `>0.85`.
-- **Correct actions:** `adjust_loss_weights` (balance Dice weight between 0.55-0.75) + `tune_hyperparameters` (locate optimal learning rate between 0.0001–0.003).
-- **Grader:** Measures if IoU target is reached inside the strict 5-step limit, scoring learning rate and dice optimality.
-- **Max steps:** 15
+### Task 2 — Medium: Overfitting Problems
+
+| Attribute | Detail |
+|-----------|--------|
+| **Problem** | A Transformer text classifier memorizes training data — train loss plummets but validation loss diverges and spikes by epoch 2. |
+| **Architecture** | `Embedding(30522,256) → 4×TransformerEncoderLayer(d=256, 8 heads) → Linear(256,2)` — binary classifier with 95%/5% class imbalance |
+| **Correct actions** | `add_augmentation` applying both `dropout` **and** `truncate_sequence` sequentially to close the val/train gap below 0.15 |
+| **Grader** | Credits correctly started regularization strategies and heavily rewards closing the val/train loss gap safely |
+| **Max steps** | 15 |
+| **Success threshold** | ≥ 0.80 |
+
+### Task 3 — Hard: Segmentation IoU 
+
+| Attribute | Detail |
+|-----------|--------|
+| **Problem** | A SegNet architecture plateaus at IoU=0.52 due to a **frozen encoder**, unbalanced loss weights, and suboptimal learning rate. Target: **IoU > 0.85 within 5 steps**. |
+| **Architecture** | `ResNet50-Encoder(FROZEN) → AdaptiveAttentionGate(512) → LightweightDecoder(256,128,64) → Sigmoid` — 5-class lung segmentation |
+| **Dataset** | Cross-dataset: trained on **ChestX-ray14**, validated on **RSNA Pneumonia** |
+| **Initial config** | `0.6×CrossEntropy + 0.4×Dice`, pre-trained encoder weights **locked** |
+| **The Trap** | Without unfreezing the `ResNet50-Encoder`, IoU **cannot exceed ~0.72** regardless of hyperparameters. The agent must recognize that `toggle_layer_freeze` is essential — not a distractor. |
+| **Correct actions** | `toggle_layer_freeze` (unfreeze `ResNet50-Encoder`) + `adjust_loss_weights` (Dice weight 0.55–0.75) + `tune_hyperparameters` (lr 0.0001–0.003) |
+| **Grader** | Measures IoU achievement across tiers (0.55→0.65→0.75→0.85), rewards optimal lr and dice weight configuration, applies step-limit bonus |
+| **Max steps** | 15 (but must reach target within **5 steps** for full credit) |
+| **Success threshold** | ≥ 0.84 |
 
 ---
 
 ## 🔌 Action Space
 
-| Action | Parameters | Description |
-|--------|-----------|-------------|
-| `fix_reshape` | `layer: str, new_shape: list[int]` | Fix dimension mismatch in Linear/Flatten layers |
-| `tune_hyperparameters` | `lr: float, batch_size: int, epochs: int` | Adjust training hyperparameters seamlessly |
-| `add_augmentation` | `strategy: str` (`dropout`, `weight_decay`, `truncate_sequence`, `horizontal_flip`, `mixup`) | Apply regularization / data augmentation |
-| `adjust_loss_weights` | `dice_weight: float, ce_weight: float` | Balance target losses (Must equal 1.0) |
-| `change_optimizer` | `optimizer: str` (`Adam`, `SGD`, `RMSprop`), `weight_decay: float` | Distractor action: Switch optimizer configurations |
-| `toggle_layer_freeze` | `layer_name: str, freeze: bool` | Distractor action: Freeze gradients in specific model layers |
+A discriminated union of **6 typed actions**, validated by Pydantic v2:
+
+| Action | Parameters | Task Relevance | Description |
+|--------|-----------|----------------|-------------|
+| `fix_reshape` | `layer: str, new_shape: list[int]` | **Easy** (primary) | Fix dimension mismatch in Linear/Flatten layers |
+| `tune_hyperparameters` | `lr: float, batch_size: int, epochs: int` | **All tasks** | Adjust training hyperparameters (lr ∈ (0,1), batch_size = power-of-2, epochs ∈ [1,50]) |
+| `add_augmentation` | `strategy: str` | **Medium** (primary) | Apply regularization (`dropout`, `weight_decay`, `truncate_sequence`, `horizontal_flip`, `mixup`) |
+| `adjust_loss_weights` | `dice_weight: float, ce_weight: float` | **Hard** (required) | Rebalance Dice vs Cross-Entropy loss (must sum to 1.0) |
+| `change_optimizer` | `optimizer: str, weight_decay: float` | Distractor | Switch optimizer (`Adam`, `SGD`, `RMSprop`) — valid but provides no improvement signal |
+| `toggle_layer_freeze` | `layer_name: str, freeze: bool` | **Hard** (essential) | Freeze/unfreeze layer gradients — **critical** for unlocking hard task IoU ceiling |
+
+> **Design Note:** `Toggle_layer_freeze` looks like a distractor but is actually essential. The `frozen ResNet50-Encoder` limits IoU to ~0.72, so tuning won’t help. `Agents` must notice the "FROZEN" hint and plateau to realize it needs `unfreezing`.
 
 ---
 
@@ -127,43 +159,69 @@ ml-pipeline-debugger/
 | Field | Type | Description |
 |-------|------|-------------|
 | `task_id` | `str` | Active task marker (`easy`, `medium`, `hard`) |
-| `architecture_summary` | `str` | Text description describing module composition & layers |
+| `architecture_summary` | `str` | Text description of module composition, layers, and current state |
 | `tensor_shapes` | `dict[str, list[int]]` | Expected vs actual input tensor dimension states |
-| `error_trace` | `str` (or `null`) | Python Stacktrace simulation indicating Crash events |
-| `metrics_history` | `list[EpochMetrics]` | Array containing `train_loss`, `val_loss`, `accuracy`, and `iou` |
+| `error_trace` | `str \| null` | Python stacktrace simulation indicating crash events |
+| `metrics_history` | `list[EpochMetrics]` | Per-epoch metrics array (see below) |
 | `step_number` | `int` | Current action step iteration |
-| `max_steps` | `int` | Limits until terminal configuration (Always 15) |
+| `max_steps` | `int` | Limit until terminal state (always 15) |
+
+### EpochMetrics Schema
+
+Each entry in `metrics_history` contains enriched telemetry:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `epoch` | `int` | Epoch index (0-based) |
+| `train_loss` | `float` | Training loss for the epoch |
+| `val_loss` | `float` | Validation loss for the epoch |
+| `accuracy` | `float \| null` | Classification accuracy (Easy/Medium tasks) |
+| `iou` | `float \| null` | Intersection-over-Union score (Hard task) |
+| `gpu_memory_allocated_mb` | `int` | Simulated GPU memory allocated in MB |
+| `step_time_ms` | `float` | Average simulated time per training step (ms) |
+| `gradient_norm` | `float` | Simulated L2 norm of gradients |
+
+### Computed Properties
+
+The observation also exposes convenience properties for agent decision-making:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `last_metrics` | `EpochMetrics \| None` | Most recent epoch metrics entry |
+| `steps_remaining` | `int` | `max_steps - step_number` |
+| `val_train_gap` | `float \| None` | `val_loss - train_loss` from last epoch (useful for medium task) |
 
 ---
 
 ## 🏆 Reward Function
 
-The reward function provides **dense signal** throughout the model workflow — not just sparse end-of-episode scores.
+The reward function provides **dense signal** throughout the workflow — not just sparse end-of-episode scores. Reward is clamped to `[-1.0, 2.0]` per step.
 
 | Event | Reward | Rationale |
 |-------|--------|-----------|
-| Task SOLVED | +2.0 | Standard big bonus for task completion |
-| Validation loss drops | +1.0 per 0.05 drop | High weighting for steady metric improvements over steps |
-| Epoch simulated properly | +0.1 per epoch | Incremental reinforcement emphasizing valid, continuous execution |
-| Valid action but no progress | -0.01 | Minor detraction to disincentivize idling operations |
-| Infinite Loop (Repeated failure) | -0.3 | Halts models stuck repeating identical syntax patterns |
-| Crash (OOM / NaN loss / Error) | -0.5 | Strict penalization minimizing chaotic, unchecked changes |
+| Task SOLVED | **+2.0** | Large bonus for task completion |
+| Validation loss drops | **+1.0** per 0.05 drop | High weighting for steady metric improvements |
+| Epoch simulated properly | **+0.1** per epoch | Incremental reinforcement for valid continuous execution |
+| Valid action but no progress | **−0.01** | Minor detraction to disincentivize idling operations |
+| Infinite loop (3× identical action) | **−0.3** | Penalizes agents stuck repeating identical action patterns |
+| Crash (OOM / NaN loss / Shape error) | **−0.5** | Strict penalization for chaotic, unchecked changes |
 
 ---
 
 ## 🚀 Setup & Running Locally
 
-### 1. Clone & Install Server/Client Requirements
+### 1. Clone & Install
 
 ```bash
-git clone <your_repo_url>
+git clone https://github.com/swaraj123822/ML-pipleline-debugger.git
 cd ml-pipeline-debugger
 
 # Create a virtual environment
 python -m venv venv
-source venv/Scripts/activate # On Windows: .\venv\Scripts\activate
+source venv/bin/activate         # Linux/Mac
+# .\\venv\\Scripts\\activate      # Windows
 
-# Install core environment + client endpoints
+# Install server + client dependencies
 pip install -r server/requirements.txt
 pip install -r baseline/requirements.txt
 ```
@@ -171,8 +229,8 @@ pip install -r baseline/requirements.txt
 ### 2. Set Environment Variables
 
 ```bash
-export API_BASE_URL="https://openrouter.ai/api/v1"
-export MODEL_NAME="openai/gpt-4o"
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="openai/gpt-oss-120b:groq"
 export HF_TOKEN="your-hf-token"
 export MLDBG_BASE_URL="http://localhost:7860"
 ```
@@ -186,11 +244,16 @@ uvicorn server.app:app --host 0.0.0.0 --port 7860
 ### 4. Run the Baseline Agent
 
 ```bash
-# Verify inference across all 3 difficulties directly via WebSocket
 python inference.py --task all
 ```
 
-### 5. Validate Submission Standard
+### 5. Run Tests
+
+```bash
+pytest
+```
+
+### 6. Validate Submission
 
 ```bash
 bash validation-scripts/validate-submission.sh "http://localhost:7860" .
@@ -205,10 +268,40 @@ bash validation-scripts/validate-submission.sh "http://localhost:7860" .
 docker build -t ml-pipeline-debugger .
 
 # Run
-docker run -p 7860:7860 ml-pipeline-debugger
+docker run -rm -p 7860:7860 ml-pipeline-debugger
 ```
 
-The environment server initializes instantly with `uvicorn` and will bind on port 7860 natively.
+The environment server initializes instantly with `uvicorn` and binds on port 7860 — no GPU, no model weights, deterministic from first request.
+
+---
+
+## 📡 API Reference
+
+### HTTP Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/` | Welcome message with endpoint directory |
+| `GET`  | `/health` | Health check (`{"status": "ok"}`) |
+| `GET`  | `/info` | Environment metadata (tasks, action space, reward schedule) |
+| `POST` | `/reset` | Start a new episode — `?task_id=easy\|medium\|hard` |
+| `POST` | `/step` | Submit an action — body: `{"task_id": "...", "action": {...}}` |
+| `GET`  | `/state` | Retrieve current episode state |
+
+### WebSocket Protocol (`/ws`)
+
+Persistent session with isolated environment per connection:
+
+```jsonc
+// Client → Server
+{"method": "reset", "task_id": "easy"}
+{"method": "step",  "action": {"action_type": "fix_reshape", "layer": "flatten", "new_shape": [2304]}}
+{"method": "state"}
+
+// Server → Client
+{"result": <observation | step_result | state>}
+{"error":  "<message>"}
+```
 
 ---
 
@@ -216,38 +309,55 @@ The environment server initializes instantly with `uvicorn` and will bind on por
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `API_BASE_URL` | Yes | LLM API endpoint for `inference.py` (e.g. `https://openrouter.ai/api/v1`) |
-| `MODEL_NAME` | Yes | Agent model identifier (e.g. `openai/gpt-oss-120b:free`) |
-| `HF_TOKEN` | Yes | API authentication token. |
-| `MLDBG_BASE_URL` | No | Overrides localhost bindings targeting server (default: `http://localhost:7860`) |
+| `API_BASE_URL` | Yes | LLM API endpoint for `inference.py` (e.g.`https://router.huggingface.co/v1`) |
+| `MODEL_NAME` | Yes | Agent model identifier (e.g. `openai/gpt-4o`, `openai/gpt-oss-120b:groq`) |
+| `HF_TOKEN` | Yes | API authentication token |
+| `MLDBG_BASE_URL` | No | Overrides localhost targeting server (default: `http://localhost:7860`) |
 
 ---
 
-## 📊 Baseline Scores
 
-Evaluated reliably interacting with `openai/gpt-oss-120b:free`.
+### 🤖 Baseline Agent Results (`openai/gpt-oss-120b:groq`)
 
-| Task | Difficulty | Score | Passed | Cumulative Reward |
-|------|-----------|-------|--------|-------------------|
-| Task 1 — CV Shape Error | Easy | **0.999** | ✅ True | 2.0 |
-| Task 2 — NLP Overfitting | Medium| **0.600** | ❌ False| 12.922 |
-| Task 3 — Lung Segmentation IoU| Hard | **0.999** | ✅ True | 4.0 |
-| **Overall Average Score** | | **0.866** | | |
-
-*Note: Models can dynamically struggle with Task 2's specific multi-step requirement (applying Dropout AND Sequence Truncation consecutively to clear the constraint gap thresholds).*
+| Task | Difficulty | Steps | Score | Passed | Cumulative Reward |
+|------|-----------|:-----:|:-----:|:------:|:-----------------:|
+| Task 1 — Tensor Shape Error | Easy | 1 | **0.999** | ✅ | 2.0 |
+| Task 2 — Overfitting Problems | Medium | 15 | **0.578** | ❌ | 5.956 |
+| Task 3 — Segmentation IoU | Hard | 15 | **0.899** | ✅ | 12.0 |
+| **Overall Average** | | | **0.825** | | |
 
 ---
+
+## 🧪 Test Coverage
+
+The test suite covers **3 modules** with comprehensive edge cases:
+
+| Test Module | Tests | Coverage |
+|-------------|:-----:|----------|
+| `test_env_loop.py` | 17 | End-to-end episode lifecycle: reset, step, state, termination, reward accumulation |
+| `test_graders.py` | 16 | Deterministic grader scoring: partial credits, efficiency penalties, NaN penalties, IoU tiers |
+| `test_simulator.py` | 16 | Crash detection, loss curve generation, determinism verification, solve conditions |
+
+```bash
+# Run with verbose output
+pytest
+```
 
 ## 📝 OpenEnv Spec Compliance
 
-- ✅ `openenv.yaml` comprehensively integrated linking the deployment.
-- ✅ Pydantic-based deterministic inputs linking Client `<->` Server. (`models.py`)
-- ✅ Continuous WebSocket session loops natively supported under `/ws`.
-- ✅ `step()` -> evaluates action correctly against deterministic state machines, outputting info & reward structures.
-- ✅ `reset()` -> resets local parameters establishing precise tracking constraints.
-- ✅ `state()` -> reflects overarching debug pipeline checkpoints.
-- ✅ **3 robust tasks** evaluating variable ML failures (CV Dimension Error, Overfitting Text Classification, IoU Segmentation).
-- ✅ Auto-graded system emitting scores scaled cleanly to bounds strictly `[0.0, 1.0]`.
-- ✅ Custom `Dockerfile` ready explicitly for Hugging Face Spaces integration.
-- ✅ Baseline `inference.py` evaluating `gpt-*` variants effectively utilizing the environment definitions cleanly.
-- ✅ Dense dynamic reward distribution allocating partial credits safely preventing sparsity hurdles.
+- ✅ `openenv.yaml` comprehensively declares all 3 tasks, thresholds, and deployment metadata
+- ✅ Pydantic v2 strict contracts linking Client ↔ Server (`models.py`) with field-level validation
+- ✅ Continuous WebSocket session loops natively supported under `/ws`
+- ✅ Dual transport: HTTP `POST /reset`, `POST /step`, `GET /state` alongside WebSocket
+- ✅ `step()` → evaluates action against deterministic state machines, outputs observation + reward
+- ✅ `reset()` → resets all parameters for precise episode-level tracking
+- ✅ `state()` → reflects internal episode checkpoint (action history, cumulative reward, terminal status)
+- ✅ **3 progressive tasks** evaluating variable ML failures (CV Dimension Error → Overfitting → IoU Segmentation with hidden trap)
+- ✅ **6 typed actions** — 4 functional + 1 distractor + 1 context-dependent (essential for hard, distractor for easy/medium)
+- ✅ Enriched `EpochMetrics` with simulated telemetry (`gpu_memory_allocated_mb`, `step_time_ms`, `gradient_norm`)
+- ✅ Auto-graded system emitting scores strictly in open interval `(0.001, 0.999)` with efficiency penalties
+- ✅ Custom `Dockerfile` ready for Hugging Face Spaces deployment (Python 3.12-slim, port 7860)
+- ✅ Dense dynamic reward distribution `[-1.0, 2.0]` with 6 distinct signal components
+- ✅ Infinite loop detection (3× repeated identical action → `−0.3` penalty)
+- ✅ Baseline `inference.py` supporting `--task` selection and JSON trajectory output
+- ✅ Comprehensive test suite: 49 tests across graders, simulator, and environment loop
