@@ -28,6 +28,11 @@ class GraderResult:
     passed: bool
     reason: str
     partial_credit: dict[str, float]
+    
+
+def _clamp(score: float) -> float:
+    """Clamp score to strictly open interval (0, 1) as required by the validator."""
+    return round(max(0.001, min(0.999, score)), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +134,7 @@ def _grade_easy(state: MLDebuggerState) -> GraderResult:
     partial = {"fix_attempted": 0.0, "correct_layer": 0.0, "correct_shape": 0.0, "efficiency": 0.0}
 
     if not fix_attempts:
-        return GraderResult(score=0.0, passed=False, reason="No FixReshape action submitted.", partial_credit=partial)
+        return GraderResult(score=0.001, passed=False, reason="No FixReshape action submitted.", partial_credit=partial)
 
     partial["fix_attempted"] = 0.2
     correct_layer_seen = any(a.layer == "flatten" for a in fix_attempts)
@@ -146,14 +151,14 @@ def _grade_easy(state: MLDebuggerState) -> GraderResult:
         wasted = max(0, correct_step - 1)
         partial["efficiency"] = max(0.0, 0.2 - wasted * 0.05)
         return GraderResult(
-            score=min(1.0, round(sum(partial.values()), 4)),
+            score=_clamp(sum(partial.values())),
             passed=True,
             reason=f"Correct fix at step {correct_step}. Wasted steps: {wasted}.",
             partial_credit=partial,
         )
 
     return GraderResult(
-        score=round(sum(partial.values()), 4),
+        score=_clamp(sum(partial.values())),
         passed=False,
         reason=f"FixReshape attempted but shape incorrect. Correct layer identified: {correct_layer_seen}.",
         partial_credit=partial,
@@ -199,7 +204,7 @@ def _grade_medium(state: MLDebuggerState) -> GraderResult:
         reasons.append("NaN crash penalty")
 
     return GraderResult(
-        score=round(min(1.0, score), 4),
+        score=_clamp(score),
         passed=score >= 0.8,
         reason=". ".join(reasons) + ".",
         partial_credit=partial,
@@ -218,7 +223,7 @@ def _grade_hard(state: MLDebuggerState) -> GraderResult:
     achieved_within_limit = state.current_step <= 5 and best_iou >= 0.85
 
     if best_iou >= 0.85:
-        partial["iou_achievement"] = 1.0 if achieved_within_limit else 0.7
+        partial["iou_achievement"] = 0.999 if achieved_within_limit else 0.7
     elif best_iou >= 0.75:
         partial["iou_achievement"] = 0.5
     elif best_iou >= 0.65:
@@ -241,11 +246,11 @@ def _grade_hard(state: MLDebuggerState) -> GraderResult:
     partial["config_quality"] = min(0.2, cfg)
 
     raw = partial["iou_achievement"] + (partial["config_quality"] if partial["iou_achievement"] < 1.0 else 0.0)
-    score = min(1.0, round(raw, 4))
+    score = _clamp(raw)
 
     return GraderResult(
         score=score,
-        passed=score >= 0.85,
+        passed=score >= 0.84,
         reason=(
             f"Best IoU: {best_iou:.4f} "
             f"({'within' if achieved_within_limit else 'exceeded'} 5-step limit). "
@@ -262,7 +267,7 @@ def _grade_hard(state: MLDebuggerState) -> GraderResult:
 TASK_REGISTRY: dict[str, dict] = {
     "easy": {
         "id": "easy", "name": "CV Shape Error", "difficulty": "easy",
-        "success_threshold": 1.0, "max_steps": 15,
+        "success_threshold": 0.99, "max_steps": 15,
         "description": "Fix a tensor reshape mismatch in a CNN. Flatten produces 512 features; 2304 are required.",
     },
     "medium": {
@@ -272,7 +277,7 @@ TASK_REGISTRY: dict[str, dict] = {
     },
     "hard": {
         "id": "hard", "name": "Lung Segmentation IoU", "difficulty": "hard",
-        "success_threshold": 0.85, "max_steps": 15,
+        "success_threshold": 0.84, "max_steps": 15,
         "description": "Push lung segmentation IoU above 0.85 within 5 steps by tuning lr and Dice/CE weights.",
     },
 }
