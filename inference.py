@@ -131,16 +131,17 @@ def run_task(
             error_val = result.info.get("crash", {}).get("type") if result.info.get("crash") else "null"
             done_val = "true" if result.done else "false"
             action_str = json.dumps(action.model_dump())
-            print(f"[STEP] step={step + 1} action={action_str} reward={result.reward:.2f} done={done_val} error={error_val}", flush=True)
+            print(f"[STEP] step={step + 1} action={action_str} reward={result.reward:.3f} done={done_val} error={error_val}", flush=True)
 
             obs = result.observation
 
             if result.done:
                 fg = result.info.get("final_grade", {})
                 score = fg.get("score", 0.0)
+                score = max(0.001, min(0.999, score))
                 success_val = "true" if fg.get("passed", False) else "false"
                 rewards_str = ",".join(f"{r['reward']:.2f}" for r in trajectory)
-                print(f"[END] success={success_val} steps={step + 1} score={score:.2f} rewards={rewards_str}", flush=True)
+                print(f"[END] success={success_val} steps={step + 1} score={score:.3f} rewards={rewards_str}", flush=True)
                 return {
                     "task_id": task_id,
                     "model": model,
@@ -156,12 +157,12 @@ def run_task(
 
         final_state = env.state()
         rewards_str = ",".join(f"{r['reward']:.2f}" for r in trajectory)
-        print(f"[END] success=false steps=15 score=0.000 rewards={rewards_str}", flush=True)
+        print(f"[END] success=false steps=15 score=0.001 rewards={rewards_str}", flush=True)
         return {
             "task_id": task_id,
             "model": model,
             "steps_taken": 15,
-            "score": 0.0,
+            "score": 0.001,
             "passed": False,
             "cumulative_reward": final_state.cumulative_reward,
             "trajectory": trajectory,
@@ -186,7 +187,7 @@ def main() -> None:
         r = run_task(oai, task_id, MODEL_NAME, ENV_URL)
         results.append(r)
 
-    avg = sum(r["score"] for r in results) / len(results) if results else 0.0
+    avg = sum(r["score"] for r in results) / len(results) if results else 0.001
 
     output = {"model": MODEL_NAME, "average_score": avg, "tasks": results}
     with open(args.output, "w") as f:

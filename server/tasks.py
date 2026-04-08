@@ -32,7 +32,7 @@ class GraderResult:
 
 def _clamp(score: float) -> float:
     """Clamp score to strictly open interval (0, 1) as required by the validator."""
-    return round(max(0.001, min(0.999, score)), 4)
+    return round(max(0.001, min(0.999, score)), 3)
 
 
 # ---------------------------------------------------------------------------
